@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function valid(data) {
+      return data.keys().hasAll(['name','email','course','areas','types','emailNotifications','frequency','onboarded','createdAt','updatedAt','consentUpdatedAt'])
+        && data.keys().hasOnly(['name','email','course','areas','types','emailNotifications','frequency','onboarded','createdAt','updatedAt','consentUpdatedAt'])
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && data.email == request.auth.token.email
+        && data.course in ['Engenharia de Produção','Engenharia Elétrica','Inteligência Artificial (IA)','Engenharia da Computação','Sistemas de Informação']
+        && data.areas is list && data.areas.size() <= 7
+        && data.areas.toSet().size() == data.areas.size()
+        && data.areas.hasOnly(['Desenvolvimento de software','Inteligência artificial e dados','Automação e robótica','Energia e eletrônica','Gestão e processos','Pesquisa e inovação','Educação e impacto social'])
+        && data.types is list && data.types.size() <= 5
+        && data.types.toSet().size() == data.types.size()
+        && data.types.hasOnly(['Estágios','Bolsas','Iniciação científica','Extensão','Monitorias'])
+        && data.emailNotifications is bool
+        && data.frequency in ['semanal','diaria']
+        && data.onboarded is bool
+        && (!data.onboarded || (data.areas.size() > 0 && data.types.size() > 0))
+        && data.createdAt is timestamp && data.updatedAt == request.time
+        && data.consentUpdatedAt is timestamp;
+    }
+    match /usuarios/{uid} {
+      allow get: if owner(uid);
+      allow list: if false;
+      allow create: if owner(uid) && valid(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.consentUpdatedAt == request.time
+        && request.resource.data.onboarded == false
+        && request.resource.data.emailNotifications == false
+        && request.resource.data.areas.size() == 0
+        && request.resource.data.types.size() == 0;
+      allow update: if owner(uid) && request.auth.token.email_verified == true
+        && valid(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (request.resource.data.consentUpdatedAt == resource.data.consentUpdatedAt
+          || request.resource.data.consentUpdatedAt == request.time)
+        && (request.resource.data.emailNotifications == resource.data.emailNotifications
+          || request.resource.data.consentUpdatedAt == request.time);
+      allow delete: if false;
+    }
+    function verified() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function admin() {
+      return verified() && exists(/databases/$(database)/documents/administradores/$(request.auth.uid))
+        && get(/databases/$(database)/documents/administradores/$(request.auth.uid)).data.active == true;
+    }
+    function docLabelAt(labels, i) {
+      return labels.size() <= i || (labels[i] is string && labels[i].size() > 0 && labels[i].size() <= 150);
+    }
+    function validOpportunity(d) {
+      return d.keys().hasAll(['title','organization','description','requirements','category','courses','areas','campus','modality','remuneration','sourceUrl','applicationUrl','deadline','documents','status','createdBy','createdAt','updatedAt'])
+        && d.keys().hasOnly(['title','organization','description','requirements','category','courses','areas','campus','modality','remuneration','sourceUrl','applicationUrl','deadline','documents','status','createdBy','createdAt','updatedAt'])
+        && d.title is string && d.title.size() >= 5 && d.title.size() <= 160
+        && d.organization is string && d.organization.size() > 0 && d.organization.size() <= 120
+        && d.description is string && d.description.size() >= 20 && d.description.size() <= 6000
+        && d.requirements is string && d.requirements.size() > 0 && d.requirements.size() <= 4000
+        && d.category in ['Estágios','Bolsas','Iniciação científica','Extensão','Monitorias']
+        && d.courses is list && d.courses.size() <= 5 && d.courses.toSet().size() == d.courses.size()
+        && d.courses.hasOnly(['Engenharia de Produção','Engenharia Elétrica','Inteligência Artificial (IA)','Engenharia da Computação','Sistemas de Informação'])
+        && d.areas is list && d.areas.size() <= 7 && d.areas.toSet().size() == d.areas.size()
+        && d.areas.hasOnly(['Desenvolvimento de software','Inteligência artificial e dados','Automação e robótica','Energia e eletrônica','Gestão e processos','Pesquisa e inovação','Educação e impacto social'])
+        && d.campus in ['João Monlevade','Ouro Preto','Mariana','Todos os campi']
+        && d.modality in ['Presencial','Híbrido','Remoto']
+        && d.remuneration is string && d.remuneration.size() <= 120
+        && d.sourceUrl is string && d.sourceUrl.size() <= 2000 && d.sourceUrl.matches('https?://[^ ]+')
+        && d.applicationUrl is string && d.applicationUrl.size() <= 2000
+        && (d.applicationUrl == '' || d.applicationUrl.matches('https?://[^ ]+'))
+        && d.deadline is timestamp && d.status in ['rascunho','publicada','encerrada']
+        && (d.status != 'publicada' || d.deadline > request.time)
+        && d.documents is list && d.documents.size() <= 15 && d.documents.toSet().size() == d.documents.size()
+        && docLabelAt(d.documents,0) && docLabelAt(d.documents,1) && docLabelAt(d.documents,2)
+        && docLabelAt(d.documents,3) && docLabelAt(d.documents,4) && docLabelAt(d.documents,5)
+        && docLabelAt(d.documents,6) && docLabelAt(d.documents,7) && docLabelAt(d.documents,8)
+        && docLabelAt(d.documents,9) && docLabelAt(d.documents,10) && docLabelAt(d.documents,11)
+        && docLabelAt(d.documents,12) && docLabelAt(d.documents,13) && docLabelAt(d.documents,14)
+        && d.createdBy is string && d.createdAt is timestamp && d.updatedAt == request.time;
+    }
+    match /administradores/{uid} {
+      allow get: if owner(uid) && verified();
+      allow list, create, update, delete: if false;
+    }
+    match /oportunidades/{id} {
+      allow read: if verified() && (resource.data.status in ['publicada','encerrada'] || admin());
+      allow create: if admin() && validOpportunity(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid && request.resource.data.createdAt == request.time;
+      allow update: if admin() && validOpportunity(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
+    function validTracking(d, id) {
+      let opportunity = get(/databases/$(database)/documents/oportunidades/$(id)).data;
+      return opportunity.status in ['publicada','encerrada']
+        && d.keys().hasAll(['status','checkedDocuments','updatedAt'])
+        && d.keys().hasOnly(['status','checkedDocuments','updatedAt'])
+        && d.status in ['Tenho interesse','Preparando documentos','Inscrição realizada','Desisti']
+        && d.checkedDocuments is list && d.checkedDocuments.size() <= 15
+        && d.checkedDocuments.toSet().size() == d.checkedDocuments.size()
+        && d.checkedDocuments.hasOnly(opportunity.documents)
+        && d.updatedAt == request.time;
+    }
+    match /usuarios/{uid}/acompanhamentos/{id} {
+      allow read: if owner(uid) && verified();
+      allow create, update: if owner(uid) && verified() && validTracking(request.resource.data,id);
+      allow delete: if owner(uid) && verified();
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
