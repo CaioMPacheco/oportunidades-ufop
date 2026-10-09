@@ -26,6 +26,7 @@ import {
 } from "../../lib/opportunities";
 import type { Opportunity, Tracking } from "../../lib/opportunities";
 import AdminForm from "./AdminForm";
+import EmailTestPanel from "./EmailTestPanel";
 import "./Catalog.css";
 
 type Props = {
@@ -544,6 +545,9 @@ export default function Catalog({ user, profile, onProfile, onLogout }: Props) {
           </section>
         ) : (
           <>
+            {tab === "admin" && (
+              <EmailTestPanel user={user} profile={profile} items={items} />
+            )}
             <section className="cat-list-heading">
               <div>
                 <p className="eyebrow">
